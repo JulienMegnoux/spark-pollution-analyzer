@@ -1,83 +1,45 @@
-// ============================================================================
-// IMPORTS
-// ============================================================================
-
 import org.apache.spark.sql.{SparkSession, DataFrame}
-// → Import des classes de base pour manipuler Spark et les DataFrames.
-
 import org.apache.spark.sql.functions._
-// → Import de toutes les fonctions SQL utiles (avg, max, col, when, etc.)
 
-
-
-
-// ============================================================================
-// 1) NETTOYAGE — PM2.5 nettoyé et converti en DOUBLE
-// ============================================================================
-
+// ========================================================
+// 1) Nettoyage — PM2.5 devient un vrai DOUBLE propre
+// ========================================================
 object Cleaning {
 
-  // Fonction clean() : prend un DataFrame brut et retourne un DataFrame propre.
   def clean(df: DataFrame)(implicit spark: SparkSession): DataFrame = {
 
-    df
-      .dropDuplicates()
-      // → Supprime les lignes strictement identiques.
-
+    df.dropDuplicates()
       .filter(col("YEAR").isNotNull)
       .filter(col("MONTH").isNotNull)
       .filter(col("DAY").isNotNull)
       .filter(col("HOUR").isNotNull)
-      // → On supprime les lignes où les informations temporelles sont manquantes.
-
-      // -----------------------------------------------------------------------
-      // Nettoyage de PM2.5 :
-      // - Remplace "NA" par une chaîne vide
-      // - Convertit ensuite en double → PM25_clean
-      // -----------------------------------------------------------------------
-      .withColumn(
-        "PM25_clean",
+      // 🔥 "NA" → null → cast double
+      .withColumn("PM25_clean",
         regexp_replace(col("`PM2.5`"), "NA", "").cast("double")
       )
-
-      // → Élimination des lignes où PM25_clean reste null (valeurs inutilisables).
+      // supprimer les lignes où PM25 reste null
       .filter(col("PM25_clean").isNotNull)
   }
 }
 
-
-
-
-// ============================================================================
-// 2) FEATURES TEMPORELLES — Renommage et ajout de colonnes dérivées
-// ============================================================================
-
+// ========================================================
+// 2) Features temporelles — on renomme PM25_clean en PM25
+// ========================================================
 object Features {
 
   def addFeatures(df: DataFrame)(implicit spark: SparkSession): DataFrame = {
     import spark.implicits._
 
-    // Correction d’un changement de comportement Spark sur le parsing des dates.
     spark.sql("set spark.sql.legacy.timeParserPolicy=LEGACY")
 
-    // -------------------------------------------------------------------------
-    // Renommage des colonnes : YEAR → year, etc.
-    // PM25_clean devient PM25 (colonne finale propre)
-    // -------------------------------------------------------------------------
     val renamed = df
       .withColumnRenamed("YEAR",  "year")
       .withColumnRenamed("MONTH", "month")
       .withColumnRenamed("DAY",   "day")
       .withColumnRenamed("HOUR",  "hour")
+      // 🔥 colonne déjà propre → renommée ici
       .withColumnRenamed("PM25_clean", "PM25")
 
-    // -------------------------------------------------------------------------
-    // Ajout des colonnes temporelles
-    // - datetime : vraie colonne timestamp
-    // - season : saison correspondant au mois
-    // - is_weekend : 1 si samedi/dimanche, 0 sinon
-    // - hour_category : catégorie d'heure (night/morning/afternoon/evening)
-    // -------------------------------------------------------------------------
     renamed
       .withColumn(
         "datetime",
@@ -107,38 +69,30 @@ object Features {
   }
 }
 
-
-
-
-// ============================================================================
-// 3) STATISTIQUES SIMPLES — Moyennes PM25 par station, heure, mois, année
-// ============================================================================
-
+// ========================================================
+// 3) Statistiques simples
+// ========================================================
 object Stats {
 
   def showBasic(df: DataFrame)(implicit spark: SparkSession): Unit = {
 
     println("\n=== Statistiques descriptives ===")
 
-    // Moyenne PM25 par station
     df.groupBy("STATION")
       .agg(avg("PM25").alias("PM25_mean"))
       .orderBy(desc("PM25_mean"))
       .show(20, truncate = false)
 
-    // Moyenne PM25 par heure de la journée
     df.groupBy("hour")
       .agg(avg("PM25").alias("PM25_mean"))
       .orderBy("hour")
       .show(24, truncate = false)
 
-    // Moyenne PM25 par mois
     df.groupBy("month")
       .agg(avg("PM25").alias("PM25_mean"))
       .orderBy("month")
       .show(12, truncate = false)
 
-    // Moyenne PM25 par année
     df.groupBy("year")
       .agg(avg("PM25").alias("PM25_mean"))
       .orderBy("year")
@@ -146,33 +100,23 @@ object Stats {
   }
 }
 
-
-
-
-// ============================================================================
-// 4) ANALYSE APPROFONDIE — Stations, pics horaires, anomalies
-// ============================================================================
-
+// ========================================================
+// 4) Analyse approfondie — aucune modif nécessaire
+// ========================================================
 object DeepAnalysis {
 
-  // ---------------------------------------------------------------------------
-  // 3.1 Stations les plus exposées
-  // ---------------------------------------------------------------------------
   def stationsMostExposed(df: DataFrame)(implicit spark: SparkSession): Unit = {
     println("\n=== 3.1 Stations les plus exposées ===")
 
     df.groupBy("STATION")
       .agg(
         avg("PM25").alias("PM25_mean"),
-        max("PM25").alias("PM25_max") // toujours une vraie valeur → PM25 est propre
+        max("PM25").alias("PM25_max") // ← maintenant TOUJOURS une vraie valeur
       )
       .orderBy(desc("PM25_mean"))
       .show(20, false)
   }
 
-  // ---------------------------------------------------------------------------
-  // 3.2 Pics horaires et saisons critiques
-  // ---------------------------------------------------------------------------
   def peakHours(df: DataFrame)(implicit spark: SparkSession): Unit = {
     println("\n=== 3.2 Pics horaires ===")
 
@@ -190,18 +134,13 @@ object DeepAnalysis {
       .show(false)
   }
 
-  // ---------------------------------------------------------------------------
-  // 3.3 Indice global de pollution + détection d'anomalies
-  // ---------------------------------------------------------------------------
   def pollutionIndexAndAnomalies(df: DataFrame)(implicit spark: SparkSession): Unit = {
     import spark.implicits._
 
     println("\n=== 3.3 Indice de pollution & anomalies ===")
 
-    // Colonnes de pollution normalisées dans l'indice
     val cols = Seq("PM25","PM10","SO2","NO2","CO","O3")
 
-    // Fonction qui retourne les min/max castés proprement
     def minMax(c: String): (Double, Double) = {
       val r = df.agg(
         min(col(c).cast("double")).alias("min"),
@@ -213,7 +152,6 @@ object DeepAnalysis {
       (minv, maxv)
     }
 
-    // Normalisation colonne par colonne
     var dfN = df
     cols.foreach { c =>
       val (mn, mx) = minMax(c)
@@ -224,19 +162,16 @@ object DeepAnalysis {
       )
     }
 
-    // Indice global = moyenne des colonnes normalisées
     val pollutionIndex =
       cols.map(c => col(s"${c}_norm")).reduce(_ + _) / lit(cols.size)
 
     val dfI = dfN.withColumn("PollutionIndex", pollutionIndex)
 
-    // Affichage des lignes les plus polluées
     dfI
       .select("datetime","STATION","PM25","PM10","NO2","O3","PollutionIndex")
       .orderBy(desc("PollutionIndex"))
       .show(20,false)
 
-    // Calcul moyenne + écart-type pour seuil d’anomalie
     val stats = dfI.agg(
       avg("PollutionIndex").alias("mean_idx"),
       stddev("PollutionIndex").alias("std_idx")
@@ -244,33 +179,14 @@ object DeepAnalysis {
 
     val mean = stats.getAs[Double]("mean_idx")
     val sd   = stats.getAs[Double]("std_idx")
-    val thr  = mean + 3 * sd // seuil d’anomalie
+    val thr  = mean + 3 * sd
 
     val anomalies = dfI.filter(col("PollutionIndex") > thr)
 
     println(s"\n--- Anomalies détectées : ${anomalies.count()} ---")
-
-    // Empêche Spark de tronquer les colonnes
-    spark.conf.set("spark.sql.debug.maxToStringFields", 200)
-
-    println("\n=== TOP anomalies (trié par indice de pollution) ===")
-
-    anomalies
-      .select(
-        col("datetime"),
-        col("STATION"),
-        col("PM25"),
-        col("PM10"),
-        col("NO2"),
-        col("O3"),
-        col("PollutionIndex")
-      )
-      .orderBy(desc("PollutionIndex"))
-      .show(50, truncate = false)
-
+    anomalies.orderBy(desc("PollutionIndex")).show(20,false)
   }
 
-  // Lance l’ensemble des analyses
   def run(df: DataFrame)(implicit spark: SparkSession): Unit = {
     stationsMostExposed(df)
     peakHours(df)
@@ -278,21 +194,16 @@ object DeepAnalysis {
   }
 }
 
-
-
-
-// ============================================================================
-// 5) MAIN — Chargement CSV, nettoyage, features, stats, analyses
-// ============================================================================
-
+// ========================================================
+// 5) MAIN — pas modifié
+// ========================================================
 object Main {
 
   def main(args: Array[String]): Unit = {
 
-    // Création de la session Spark
     implicit val spark: SparkSession = SparkSession.builder()
       .appName("Beijing Pollution Analyzer")
-      .master("local[*]") // exécution locale multi-thread
+      .master("local[*]")
       .getOrCreate()
 
     spark.sparkContext.setLogLevel("WARN")
@@ -300,7 +211,6 @@ object Main {
 
     println("=== Chargement des fichiers PRSA ===")
 
-    // Liste des 12 fichiers officiels
     val files = Seq(
       "data/PRSA_Data_Aotizhongxin_20130301-20170228.csv",
       "data/PRSA_Data_Changping_20130301-20170228.csv",
@@ -316,31 +226,25 @@ object Main {
       "data/PRSA_Data_Wanshouxigong_20130301-20170228.csv"
     )
 
-    // Chargement CSV en DataFrame
     val dfRaw = spark.read
-      .option("header", true)     // 1ère ligne = noms de colonnes
-      .option("inferSchema", true) // Spark devine le type des colonnes
+      .option("header", true)
+      .option("inferSchema", true)
       .csv(files: _*)
 
     println(s"Nombre total de lignes chargées : ${dfRaw.count()}")
 
-    // Étape 1 : nettoyage
     val dfClean = Cleaning.clean(dfRaw)
     println(s"Lignes après nettoyage : ${dfClean.count()}")
     dfClean.select("YEAR","MONTH","DAY","HOUR","PM25_clean","STATION").show(10,false)
 
-    // Étape 2 : features temporelles
     val dfFeat = Features.addFeatures(dfClean)
     dfFeat.select("datetime","season","is_weekend","hour_category","PM25","STATION")
       .show(10,false)
 
-    // Étape 3 : statistiques
     Stats.showBasic(dfFeat)
 
-    // Étape 4 : analyses avancées
     DeepAnalysis.run(dfFeat)
 
-    // Fermeture Spark
     spark.stop()
   }
 }
