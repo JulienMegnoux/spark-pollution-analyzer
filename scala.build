@@ -1,0 +1,4 @@
+using scala 2.12.18
+using jvm 17
+using dep org.apache.spark:spark-core_2.12:3.5.7
+using dep org.apache.spark:spark-sql_2.12:3.5.7

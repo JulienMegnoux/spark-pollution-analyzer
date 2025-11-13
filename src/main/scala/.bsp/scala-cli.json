@@ -1,0 +1,20 @@
+{
+  "name": "scala-cli",
+  "argv": [
+    "C:\\Users\\julie\\scala-cli\\scala-cli.exe",
+    "bsp",
+    "--json-options",
+    "C:\\Users\\julie\\Projet_scala\\spark-pollution-analyzer\\src\\main\\scala\\.scala-build\\ide-options-v2.json",
+    "--json-launcher-options",
+    "C:\\Users\\julie\\Projet_scala\\spark-pollution-analyzer\\src\\main\\scala\\.scala-build\\ide-launcher-options.json",
+    "--envs-file",
+    "C:\\Users\\julie\\Projet_scala\\spark-pollution-analyzer\\src\\main\\scala\\.scala-build\\ide-envs.json",
+    "C:\\Users\\julie\\Projet_scala\\spark-pollution-analyzer\\src\\main\\scala\\main.scala"
+  ],
+  "version": "1.9.1",
+  "bspVersion": "2.1.1",
+  "languages": [
+    "scala",
+    "java"
+  ]
+}
