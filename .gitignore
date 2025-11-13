@@ -1,0 +1,17 @@
+# SBT / Scala build
+target/
+project/target/
+project/project/
+
+# IntelliJ / Metals / VSCode
+.idea/
+.bloop/
+.metals/
+.vscode/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
