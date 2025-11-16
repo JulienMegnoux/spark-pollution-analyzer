@@ -13,6 +13,13 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
 
+// IMPORTS POUR LA PARIE 5
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.feature.{VectorAssembler, StringIndexer}
+import org.apache.spark.ml.regression.{DecisionTreeRegressor, RandomForestRegressor, LinearRegression}
+import org.apache.spark.ml.evaluation.RegressionEvaluator
+
+
 
 
 // ============================================================================
@@ -282,6 +289,171 @@ object DeepAnalysis {
   }
 }
 
+// ============================================================================
+// 5) PREDICTION — Spark MLlib (pipeline de régression sur PM2.5)
+// ============================================================================
+
+// ============================================================================
+// 5) PREDICTION — Spark MLlib (régression, arbre de décision, forêt aléatoire)
+// ============================================================================
+
+object Prediction {
+
+  def run(dfFeat: DataFrame)(implicit spark: SparkSession): Unit = {
+    import spark.implicits._
+
+    println("\n=== Partie 5 : Prediction de PM2.5 avec Spark MLlib ===")
+
+    // 1) Données de base : label + features
+    val data = dfFeat
+      .select(
+        "PM25",          // variable à prédire (label)
+        "year", "month", "day", "hour", "is_weekend",
+        "STATION", "season",
+        "datetime"
+      )
+      .na.drop()
+
+    // 2) Encodage des variables catégorielles
+    val stationIndexer = new StringIndexer()
+      .setInputCol("STATION")
+      .setOutputCol("stationIndex")
+      .setHandleInvalid("skip")
+
+    val seasonIndexer = new StringIndexer()
+      .setInputCol("season")
+      .setOutputCol("seasonIndex")
+      .setHandleInvalid("skip")
+
+    // 3) Assemblage des features numériques
+    val assembler = new VectorAssembler()
+      .setInputCols(Array(
+        "year", "month", "day", "hour",
+        "is_weekend",
+        "stationIndex", "seasonIndex"
+      ))
+      .setOutputCol("features")
+
+    // 4) Split train / test
+    val Array(trainData, testData) = data.randomSplit(Array(0.8, 0.2), seed = 42)
+
+    // 5) Évaluateur commun (RMSE)
+    val evaluator = new RegressionEvaluator()
+      .setLabelCol("PM25")
+      .setPredictionCol("prediction")
+      .setMetricName("rmse")
+
+    // ========================================================================
+    // Modèle 1 : Régression linéaire
+    // ========================================================================
+    val lr = new LinearRegression()
+      .setLabelCol("PM25")
+      .setFeaturesCol("features")
+      .setMaxIter(20)
+
+    val lrPipeline = new Pipeline()
+      .setStages(Array(stationIndexer, seasonIndexer, assembler, lr))
+
+    val lrModel = lrPipeline.fit(trainData)
+    val lrPred  = lrModel.transform(testData)
+
+    val rmseLR = evaluator.evaluate(lrPred)
+    println(f"\n=== Modele 1 : Regression lineaire ===")
+    println(f"RMSE = $rmseLR%.2f")
+
+    // ========================================================================
+    // Modèle 2 : Arbre de décision
+    // ========================================================================
+    val dt = new DecisionTreeRegressor()
+      .setLabelCol("PM25")
+      .setFeaturesCol("features")
+
+    val dtPipeline = new Pipeline()
+      .setStages(Array(stationIndexer, seasonIndexer, assembler, dt))
+
+    val dtModel = dtPipeline.fit(trainData)
+    val dtPred  = dtModel.transform(testData)
+
+    val rmseDT = evaluator.evaluate(dtPred)
+    println(f"\n=== Modele 2 : Arbre de decision ===")
+    println(f"RMSE = $rmseDT%.2f")
+
+    // On affiche quelques exemples vrai vs prédit pour ce modèle
+    println("\n--- Exemples (arbre de decision : PM25 vrai vs predit) ---")
+    dtPred
+      .select("datetime", "STATION", "PM25", "prediction")
+      .orderBy(desc("datetime"))
+      .show(20, truncate = false)
+
+    // ========================================================================
+    // Modèle 3 : Forêt aléatoire
+    // ========================================================================
+    val rf = new RandomForestRegressor()
+      .setLabelCol("PM25")
+      .setFeaturesCol("features")
+      .setNumTrees(20)
+
+    val rfPipeline = new Pipeline()
+      .setStages(Array(stationIndexer, seasonIndexer, assembler, rf))
+
+    val rfModel = rfPipeline.fit(trainData)
+    val rfPred  = rfModel.transform(testData)
+
+    val rmseRF = evaluator.evaluate(rfPred)
+    println(f"\n=== Modele 3 : Foret aleatoire ===")
+    println(f"RMSE = $rmseRF%.2f")
+  }
+}
+
+
+// ============================================================================
+// 6) TRAITEMENT EN TEMPS RÉEL (simulation de flux et détection d’anomalies)
+// ============================================================================
+
+object RealTime {
+
+  def run()(implicit spark: SparkSession): Unit = {
+    import spark.implicits._
+
+    println("\n=== Partie 6 : Traitement en temps reel (simulation de flux) ===")
+
+    // 1) Simulation d’un flux de données pour TOUTES les 12 stations
+    // Chaque ligne simule une mesure PM25 à un instant donné
+    val simulatedStream = Seq(
+      ("2025-01-01 12:00", "Aotizhongxin",   80.0),
+      ("2025-01-01 12:00", "Changping",      45.0),
+      ("2025-01-01 12:00", "Dingling",       95.0),
+      ("2025-01-01 12:00", "Dongsi",        180.0),  // anomalie
+      ("2025-01-01 12:00", "Guanyuan",      160.0),  // anomalie
+      ("2025-01-01 12:00", "Gucheng",       200.0),  // anomalie
+      ("2025-01-01 12:00", "Huairou",        50.0),
+      ("2025-01-01 12:00", "Nongzhanguan",   70.0),
+      ("2025-01-01 12:00", "Shunyi",         60.0),
+      ("2025-01-01 12:00", "Tiantan",        55.0),
+      ("2025-01-01 12:00", "Wanliu",         40.0),
+      ("2025-01-01 12:00", "Wanshouxigong", 170.0)   // anomalie
+    ).toDF("timestamp", "station", "PM25")
+
+    println("\n--- Flux simule recu  ---")
+    simulatedStream.show(false)
+
+    // 2) Transformation fonctionnelle : ajout d’un indicateur d’anomalie
+    val transformed = simulatedStream.withColumn(
+      "is_anomaly",
+      col("PM25") > 150
+    )
+
+    println("\n--- Flux transforme (avec detection des anomalies) ---")
+    transformed.show(false)
+
+    // 3) Détection automatique des anomalies
+    val anomalies = transformed.filter(col("is_anomaly") === true)
+
+    println("\n=== Anomalies detectees automatiquement ===")
+    anomalies.show(false)
+  }
+}
+
 
 
 
@@ -347,7 +519,8 @@ object Main {
   }
 
   def runGraphX(dfFeat: DataFrame)(implicit spark: SparkSession): Unit = {
-    println("\n=== Partie GraphX ===")
+    println("\n=== Partie 4 avec GraphX  ===")
+
 
     // Construction du graphe
     val vertices = buildVertices(dfFeat)
@@ -464,6 +637,13 @@ object Main {
 
     // Partie 4 : GraphX
     runGraphX(dfFeat)
+
+    // Étape 5 : prédiction de PM2.5 avec Spark MLlib
+    Prediction.run(dfFeat)
+
+    // Étape 6 : simulation de flux et détection d’anomalies
+    RealTime.run()
+
 
     spark.stop()
   }
