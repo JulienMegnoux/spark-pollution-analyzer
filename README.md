@@ -1,4 +1,4 @@
-# 🌍 Projet Spark — Analyse et Prévision de la Pollution Urbaine
+#  Projet Spark — Analyse et Prévision de la Pollution Urbaine
 Ce projet réalisé en Scala + Apache Spark analyse, modélise et prédit la pollution atmosphérique à partir de données massives provenant de différentes stations de mesure à Pékin.
 
 Le projet inclut : nettoyage des données, statistiques avancées, détection d'anomalies, GraphX, MLlib et Structured Streaming.
@@ -104,3 +104,4 @@ Julien MEGNOUX
 ADAM LOUFTI
 
 Année : 2025
+
