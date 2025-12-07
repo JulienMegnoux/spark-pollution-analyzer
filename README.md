@@ -48,7 +48,8 @@ spark-shell --version
 4) LANCER LE PROJET
 ------------------------------------------------------------
 Démarrer Spark dans le répertoire spark-pollution-analyzer-main puis dans le répertoire spark-pollution-analyzer
-spark-shell 
+
+puis lancer spark-shell 
 
 Charger le fichier Scala :  
 :load src/main/scala/app.scala
@@ -104,5 +105,6 @@ Julien MEGNOUX
 ADAM LOUFTI
 
 Année : 2025
+
 
 
